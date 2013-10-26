@@ -40,7 +40,8 @@ int main(int argc, char *argv[]) {
         size += strlen(argv[i]);
         size ++;
     }
-    write(sockfd, buf, strlen(buf));
+
+    write(sockfd, buf, size);
     bzero(buf, sizeof(buf));
 
     if(select(sockfd + 1, &ready, (fd_set *)0, (fd_set *)0, &to) == -1) {

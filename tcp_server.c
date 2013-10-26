@@ -16,8 +16,11 @@
 #define JAIL 1
 void setup_signal_handler(void);
 void cache_signal(int);
+void termination(int);
+int server_sockfd;
+
 int main() {
-    int server_sockfd, client_sockfd, server_len, client_len, i;
+    int client_sockfd, server_len, client_len, i, j;
     fd_set ready;
     struct sockaddr_in server_address, client_address;
     struct timeval to;
@@ -77,7 +80,7 @@ int main() {
     while(1) {
         FD_ZERO(&ready);
         FD_SET(server_sockfd, &ready);
-        to.tv_sec = 5;
+        to.tv_sec = 1;
         to.tv_usec = 0;
         if(select(server_sockfd + 1, &ready, (fd_set *)0, (fd_set *)0, &to) == -1) {
             perror("select");
@@ -86,10 +89,11 @@ int main() {
         if(FD_ISSET(server_sockfd, &ready)) {
             client_sockfd = accept(server_sockfd, (struct sockaddr *)&client_address, (socklen_t *)&client_len);
             bzero(buf, sizeof(buf));
-            if(read(client_sockfd, buf, sizeof(buf)) == -1) perror("read");
+            if((j = read(client_sockfd, buf, sizeof(buf))) == -1) perror("read");
 
             char *ptr = buf;
             for(i = 0; i < 10; i++){
+                if(ptr + i + 1 - buf > j) break;
                 memcpy(mkargv[i], ptr, strlen(ptr));
                 ptr += strlen(ptr);
                 ptr ++;
@@ -130,16 +134,32 @@ int main() {
 
 void setup_signal_handler(){
     struct sigaction act;
+    // SIGPIPE
     memset(&act, 0, sizeof(act));
     act.sa_handler = SIG_IGN;
+    sigemptyset(&act.sa_mask);
+    if(sigaction(SIGPIPE, &act, 0) == -1) perror("sigaction SIGPIPE");
+
+    // SIGCHLD
+    memset(&act, 0, sizeof(act));
     act.sa_handler = cache_signal;
     sigemptyset(&act.sa_mask);
     act.sa_flags = SA_NOCLDSTOP | SA_RESTART;
-    if(sigaction(SIGPIPE, &act, 0) == -1) perror("sigaction");
-    if(sigaction(SIGCHLD, &act, 0) == -1) perror("sigaction");
+    if(sigaction(SIGCHLD, &act, 0) == -1) perror("sigaction CHLD");
+
+    // SIGQUIT
+    memset(&act, 0, sizeof(act));
+    act.sa_handler = termination;
+    sigemptyset(&act.sa_mask);
+    if(sigaction(SIGQUIT, &act, 0) == -1) perror("sigaction SIGQUIT");
 }
 
 void cache_signal(int signum){
     int status;
     waitpid(-1, &status, WNOHANG);
+}
+
+void termination(int signum){
+    shutdown(server_sockfd, SHUT_RD);
+    close(server_sockfd);
 }
