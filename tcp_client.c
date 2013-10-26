@@ -10,7 +10,7 @@
 int main(int argc, char *argv[]) {
     int sockfd, len, result;
     struct sockaddr_in address;
-    char buf[0xffff] = {0};
+    char buf[1024*1024] = {0};
 
     struct in_addr addr;
     inet_aton("192.168.1.106", &addr);
@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
     }
     int i;
     int size = 0;
-    const char sep[] = {0x0a};
+    const char sep[] = {0xff};
     for(i = 1; i < argc; i++){
         memcpy(buf + size, argv[i], strlen(argv[i]));
         memcpy(buf + size + strlen(argv[i]), sep, 1);

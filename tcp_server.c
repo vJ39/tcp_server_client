@@ -20,13 +20,17 @@ int main() {
     struct sockaddr_in server_address, client_address;
     char *mkargv[10];
     int pid, status;
-    char buf[0xffff];
+    char buf[1024*1024];
     struct in_addr addr;
     inet_aton("192.168.1.106", &addr);
     if( chdir(ROOTDIR) == -1 ) perror("chdir");
 #ifdef JAIL
     int jid;
-    struct iovec iov[8];
+
+    int securelevel = 2;
+    int childrenmax = 1;
+
+    struct iovec iov[12];
     iov[0].iov_base = "path";
     iov[0].iov_len  = sizeof("path");
     iov[1].iov_base = ROOTDIR;
@@ -42,8 +46,16 @@ int main() {
     iov[6].iov_base = "ip4.addr";
     iov[6].iov_len  = sizeof("ip4.addr");
     iov[7].iov_base = &addr;
-    iov[7].iov_len  = sizeof addr;
-    jid = jail_set(iov, 8, JAIL_CREATE | JAIL_ATTACH);
+    iov[7].iov_len  = sizeof(addr);
+    iov[8].iov_base = "children.max";
+    iov[8].iov_len  = sizeof("children.max");
+    iov[9].iov_base = &childrenmax;
+    iov[9].iov_len  = sizeof(childrenmax);
+    iov[10].iov_base = "securelevel";
+    iov[10].iov_len  = sizeof("securelevel");
+    iov[11].iov_base = &securelevel;
+    iov[11].iov_len  = sizeof(securelevel);
+    if( (jid = jail_set(iov, 12, JAIL_CREATE | JAIL_ATTACH)) == -1) perror("jail");
 
     printf("Jail ID = %d\n", jid);
 #else
@@ -64,7 +76,7 @@ int main() {
         bzero(buf, sizeof(buf));
         if(read(client_sockfd, buf, sizeof(buf)) == -1) perror("read");
 
-        const char sep[] = {0x0a};
+        const char sep[] = {0xff};
         char *ptr = buf;
         for(i = 0; i < 10; i++){
             if( (ptr = mkargv[i] = strtok(ptr, sep)) == NULL) break;
@@ -73,15 +85,26 @@ int main() {
         for(; i < 10; i++) mkargv[i] = NULL;
 
         // redirect
-        if(close(0) == -1) perror("close(0)");
-        if(close(1) == -1) perror("close(1)");
         if(close(2) == -1) perror("close(2)");
-        if(dup2(client_sockfd, 0) == -1) perror("dup2(0)");
-        if(dup2(client_sockfd, 1) == -1) perror("dup2(1)");
+        if(close(1) == -1) perror("close(1)");
+        if(close(0) == -1) perror("close(0)");
         if(dup2(client_sockfd, 2) == -1) perror("dup2(2)");
+        if(dup2(client_sockfd, 1) == -1) perror("dup2(1)");
+        if(dup2(client_sockfd, 0) == -1) perror("dup2(0)");
 
         if((pid = fork()) < 0) perror("fork");
         else if(!pid) {
+            iov[0].iov_base = "path";
+            iov[0].iov_len  = sizeof("path");
+            iov[1].iov_base = "/";
+            iov[1].iov_len  = sizeof("/");
+            iov[2].iov_base = "name";
+            iov[2].iov_len  = sizeof("name");
+            iov[3].iov_base = "echo_child_service";
+            iov[3].iov_len  = sizeof("echo_child_service");
+            if( (jid = jail_set(iov, 4, JAIL_CREATE | JAIL_ATTACH)) == -1) perror("jail");
+            if( setgid((gid_t)2) == -1 ) perror("setgid");
+            if( setuid((uid_t)2) == -1 ) perror("setuid");
             if(execve(mkargv[0], mkargv, NULL) == -1) perror("execve");
         }
         else {
