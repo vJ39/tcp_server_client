@@ -9,6 +9,7 @@
 #include <sys/jail.h>
 #include <sys/uio.h>
 #include <stdlib.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <signal.h>
 #define ROOTDIR "/jail/echo"
@@ -17,7 +18,9 @@ void setup_signal_handler(void);
 void cache_signal(int);
 int main() {
     int server_sockfd, client_sockfd, server_len, client_len, i;
+    fd_set ready;
     struct sockaddr_in server_address, client_address;
+    struct timeval to;
     char *mkargv[10];
     int pid, status;
     char buf[1024*1024];
@@ -72,46 +75,56 @@ int main() {
     setup_signal_handler();
 
     while(1) {
-        client_sockfd = accept(server_sockfd, (struct sockaddr *)&client_address, (socklen_t *)&client_len);
-        bzero(buf, sizeof(buf));
-        if(read(client_sockfd, buf, sizeof(buf)) == -1) perror("read");
-
-        const char sep[] = {0xff};
-        char *ptr = buf;
-        for(i = 0; i < 10; i++){
-            if( (ptr = mkargv[i] = strtok(ptr, sep)) == NULL) break;
-            ptr += strlen(ptr) + 1;
+        FD_ZERO(&ready);
+        FD_SET(server_sockfd, &ready);
+        to.tv_sec = 5;
+        to.tv_usec = 0;
+        if(select(server_sockfd + 1, &ready, (fd_set *)0, (fd_set *)0, &to) == -1) {
+            perror("select");
+            continue;
         }
-        for(; i < 10; i++) mkargv[i] = NULL;
+        if(FD_ISSET(server_sockfd, &ready)) {
+            client_sockfd = accept(server_sockfd, (struct sockaddr *)&client_address, (socklen_t *)&client_len);
+            bzero(buf, sizeof(buf));
+            if(read(client_sockfd, buf, sizeof(buf)) == -1) perror("read");
 
-        // redirect
-        if(close(2) == -1) perror("close(2)");
-        if(close(1) == -1) perror("close(1)");
-        if(close(0) == -1) perror("close(0)");
-        if(dup2(client_sockfd, 2) == -1) perror("dup2(2)");
-        if(dup2(client_sockfd, 1) == -1) perror("dup2(1)");
-        if(dup2(client_sockfd, 0) == -1) perror("dup2(0)");
+            char *ptr = buf;
+            for(i = 0; i < 10; i++){
+                memcpy(mkargv[i], ptr, strlen(ptr));
+                ptr += strlen(ptr);
+                ptr ++;
+            }
+            for(; i < 10; i++) mkargv[i] = NULL;
 
-        if((pid = fork()) < 0) perror("fork");
-        else if(!pid) {
-            iov[0].iov_base = "path";
-            iov[0].iov_len  = sizeof("path");
-            iov[1].iov_base = "/";
-            iov[1].iov_len  = sizeof("/");
-            iov[2].iov_base = "name";
-            iov[2].iov_len  = sizeof("name");
-            iov[3].iov_base = "echo_child_service";
-            iov[3].iov_len  = sizeof("echo_child_service");
-            if( (jid = jail_set(iov, 4, JAIL_CREATE | JAIL_ATTACH)) == -1) perror("jail");
-            if( setgid((gid_t)2) == -1 ) perror("setgid");
-            if( setuid((uid_t)2) == -1 ) perror("setuid");
-            if(execve(mkargv[0], mkargv, NULL) == -1) perror("execve");
+            // redirect
+            if(close(2) == -1) perror("close(2)");
+            if(close(1) == -1) perror("close(1)");
+            if(close(0) == -1) perror("close(0)");
+            if(dup2(client_sockfd, 2) == -1) perror("dup2(2)");
+            if(dup2(client_sockfd, 1) == -1) perror("dup2(1)");
+            if(dup2(client_sockfd, 0) == -1) perror("dup2(0)");
+
+            if((pid = fork()) < 0) perror("fork");
+            else if(!pid) {
+                iov[0].iov_base = "path";
+                iov[0].iov_len  = sizeof("path");
+                iov[1].iov_base = "/";
+                iov[1].iov_len  = sizeof("/");
+                iov[2].iov_base = "name";
+                iov[2].iov_len  = sizeof("name");
+                iov[3].iov_base = "echo_child_service";
+                iov[3].iov_len  = sizeof("echo_child_service");
+                if( (jid = jail_set(iov, 4, JAIL_CREATE | JAIL_ATTACH)) == -1) perror("jail");
+                if( setgid((gid_t)2) == -1 ) perror("setgid");
+                if( setuid((uid_t)2) == -1 ) perror("setuid");
+                if(execve(mkargv[0], mkargv, NULL) == -1) perror("execve");
+            }
+            else {
+                waitpid(pid, &status, WUNTRACED);
+            }
+            shutdown(client_sockfd, SHUT_WR);
+            close(client_sockfd);
         }
-        else {
-            waitpid(pid, &status, WUNTRACED);
-        }
-        shutdown(client_sockfd, SHUT_WR);
-        close(client_sockfd);
     }
 }
 
