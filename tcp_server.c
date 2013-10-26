@@ -20,7 +20,8 @@ void termination(int);
 int server_sockfd;
 
 int main() {
-    int client_sockfd, server_len, client_len, i, j;
+    int client_sockfd, server_len, client_len, i;
+    size_t j;
     fd_set ready;
     struct sockaddr_in server_address, client_address;
     struct timeval to;
@@ -34,7 +35,7 @@ int main() {
     int jid;
 
     int securelevel = 2;
-    int childrenmax = 1;
+    int childrenmax = 5;
 
     struct iovec iov[12];
     iov[0].iov_base = "path";
@@ -93,12 +94,12 @@ int main() {
 
             char *ptr = buf;
             for(i = 0; i < 10; i++){
-                if(ptr + i + 1 - buf > j) break;
+                if(ptr + i - buf > j) {mkargv[i] = NULL; continue;}
+                mkargv[i] = (char *)malloc(strlen(ptr)+1);
                 memcpy(mkargv[i], ptr, strlen(ptr));
                 ptr += strlen(ptr);
                 ptr ++;
             }
-            for(; i < 10; i++) mkargv[i] = NULL;
 
             // redirect
             if(close(2) == -1) perror("close(2)");
@@ -107,6 +108,8 @@ int main() {
             if(dup2(client_sockfd, 2) == -1) perror("dup2(2)");
             if(dup2(client_sockfd, 1) == -1) perror("dup2(1)");
             if(dup2(client_sockfd, 0) == -1) perror("dup2(0)");
+
+            bzero(buf, sizeof(buf));
 
             if((pid = fork()) < 0) perror("fork");
             else if(!pid) {
@@ -122,6 +125,7 @@ int main() {
                 if( setgid((gid_t)2) == -1 ) perror("setgid");
                 if( setuid((uid_t)2) == -1 ) perror("setuid");
                 if(execve(mkargv[0], mkargv, NULL) == -1) perror("execve");
+                for(i = 0;i < 10; i++) free(mkargv[i]);
             }
             else {
                 waitpid(pid, &status, WUNTRACED);
