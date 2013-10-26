@@ -12,7 +12,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 #define ROOTDIR "/jail/echo"
-// #define JAIL 1
+#define JAIL 1
 void setup_signal_handler(void);
 void cache_signal(int);
 int main() {
@@ -20,8 +20,10 @@ int main() {
     struct sockaddr_in server_address, client_address;
     char *mkargv[10];
     int pid, status;
-    char buf[1024];
+    char buf[0xffff];
     struct in_addr addr;
+    inet_aton("192.168.1.106", &addr);
+    if( chdir(ROOTDIR) == -1 ) perror("chdir");
 #ifdef JAIL
     int jid;
     struct iovec iov[8];
@@ -41,12 +43,10 @@ int main() {
     iov[6].iov_len  = sizeof("ip4.addr");
     iov[7].iov_base = &addr;
     iov[7].iov_len  = sizeof addr;
-    inet_aton("192.168.1.106", &addr);
     jid = jail_set(iov, 8, JAIL_CREATE | JAIL_ATTACH);
 
     printf("Jail ID = %d\n", jid);
 #else
-    if( chdir(ROOTDIR) == -1 ) perror("chdir");
     if( chroot(ROOTDIR) == -1 ) perror("chroot");
 #endif
     server_sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -73,11 +73,9 @@ int main() {
         for(; i < 10; i++) mkargv[i] = NULL;
 
         // redirect
-        /*
         if(close(0) == -1) perror("close(0)");
         if(close(1) == -1) perror("close(1)");
         if(close(2) == -1) perror("close(2)");
-        */
         if(dup2(client_sockfd, 0) == -1) perror("dup2(0)");
         if(dup2(client_sockfd, 1) == -1) perror("dup2(1)");
         if(dup2(client_sockfd, 2) == -1) perror("dup2(2)");

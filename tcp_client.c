@@ -10,12 +10,13 @@
 int main(int argc, char *argv[]) {
     int sockfd, len, result;
     struct sockaddr_in address;
-    char buf[1024] = {0};
+    char buf[0xffff] = {0};
 
-    int jid;
     struct in_addr addr;
-    struct iovec iov[8];
     inet_aton("192.168.1.106", &addr);
+    /*
+    int jid;
+    struct iovec iov[8];
     iov[0].iov_base = "path";
     iov[0].iov_len  = sizeof("path");
     iov[1].iov_base = "/jail/echo";
@@ -35,6 +36,7 @@ int main(int argc, char *argv[]) {
     jid = jail_set(iov, 8, JAIL_CREATE | JAIL_ATTACH);
 
     printf("Jail ID = %d\n", jid);
+    */
 
     sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
@@ -56,11 +58,10 @@ int main(int argc, char *argv[]) {
         size += strlen(argv[i]);
         size ++;
     }
-    printf("send: %s\n", buf);
     write(sockfd, buf, strlen(buf));
     bzero(buf, sizeof(buf));
-    read(sockfd, buf, sizeof(buf));
-    printf("recv: %s\n", buf);
+    i = read(sockfd, buf, sizeof(buf));
+    write(1, buf, i);
     close(sockfd);
     return 0;
 }
