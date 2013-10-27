@@ -46,8 +46,11 @@ mount_unionfs -oro /usr/sbin    /jail/echo/usr/sbin
 ```
 # ./tcp_server
 Master Jail ID = 1360
+
 # jail -r 1360
 ```
+
+##クライアントからの接続方法
 
 ```クライアントからの接続
 % ./tcp_client /bin/ls
@@ -62,6 +65,16 @@ usr
 % ./tcp_client /bin/ps axwww
   PID TT  STAT    TIME COMMAND
 12475  2  RJ   0:00.00 /bin/ps axwww
+```
+
+##shellはないのか
+
+はい、ありません。  
+shell built-in commandを使いたいときはこうします。
+
+```test
+% ./tcp_client /bin/sh -c "echo ほげほげ"
+ほげほげ
 ```
 
 #オプション
