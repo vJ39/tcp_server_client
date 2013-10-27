@@ -77,7 +77,7 @@ shell built-in commandを使いたいときはこうします。
 ほげほげ
 ```
 
-#オプション
+#特別コマンド
 
 jailid・・・子JAILのJAIL IDを返します
 
@@ -90,14 +90,22 @@ jailremove・・・子JAILのJAIL IDを削除します
 
 ```jailremove
 vmware% ./tcp_client /usr/bin/perl -e 'sleep 999'
-jail(child)(create): File exists
 ^C
+
 vmware% ./tcp_client jailid
 jail(child)(create): File exists
 JAIL ID = 1365
 vmware% ./tcp_client jailremove 1365
 jailremove 1365
 ```
+
+##エラーみたいなもの
+`jail(child)(create): File exists`とか出ますが、エラーです。  
+  
+jailに関して言えば、子JAILが存在しなければ create し、あればcreateに失敗するので既存JAILに update します。  
+updateでもエラーが出たら、なんかおかしいことになってるので、サーバーを落とす必要があります。  
+この辺の原因はよくわかっていなく、HTTPサーバーとかで応用したいので、解決したい事案です。
+
 
 #その他注意点
 
