@@ -9,12 +9,12 @@
 #include <sys/jail.h>
 #include <sys/uio.h>
 #include <stdlib.h>
-#include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/resource.h>
 #include <signal.h>
 #define ROOTDIR "/jail/echo"
 #define JAIL 1
+#define ADDR "192.168.1.106"
 void setup_signal_handler(void);
 void catch_signal(int);
 int main() {
@@ -27,7 +27,7 @@ int main() {
     int pid;
     char buf[1024*1024];
     struct in_addr addr;
-    inet_aton("192.168.1.106", &addr);
+    inet_aton(ADDR, &addr);
     if( chdir(ROOTDIR) == -1 ) perror("chdir");
 #ifdef JAIL
     /* RLIMIT */
@@ -49,7 +49,7 @@ int main() {
     int securelevel = 2;
     int childrenmax = 10;
 
-    struct iovec iov[40];
+    struct iovec iov[12];
     iov[0].iov_base = "name";
     iov[0].iov_len  = sizeof("name");
     iov[1].iov_base = "echo_service";
@@ -80,8 +80,7 @@ int main() {
         else
             perror("jail_set(create)");
     }
-
-    printf("Jail ID = %d\n", jid);
+    printf("Master Jail ID = %d\n", jid);
 #else
     if( chroot(ROOTDIR) == -1 ) perror("chroot");
 #endif
@@ -128,24 +127,32 @@ int main() {
 
             bzero(buf, sizeof(buf));
 
+            if(!strncmp(mkargv[0], "jailremove", strlen("jailremove"))) {
+                jid = atoi(mkargv[1]);
+                printf("jailremove %d\n", jid);
+                if(jail_remove(jid) == -1) perror("jail_remove");
+                shutdown(client_sockfd, SHUT_WR);
+                close(client_sockfd);
+                continue;
+            }
             if((pid = fork()) == 0) {
-                iov[0].iov_base = "name";
-                iov[0].iov_len  = sizeof("name");
-                iov[1].iov_base = "echo_child_service";
-                iov[1].iov_len  = sizeof("echo_child_service");
-                iov[2].iov_base = "path";
-                iov[2].iov_len  = sizeof("path");
-                iov[3].iov_base = "/";
-                iov[3].iov_len  = sizeof("/");
-                if( (jid = jail_set(iov, 4, JAIL_CREATE | JAIL_ATTACH | JAIL_DYING )) == -1) {
-                    if((jid = jail_set(iov, 2, JAIL_UPDATE | JAIL_ATTACH | JAIL_DYING)) == -1) {
+                struct iovec childiov[4];
+                childiov[0].iov_base = "name";
+                childiov[0].iov_len  = sizeof("name");
+                childiov[1].iov_base = "echo_child_service";
+                childiov[1].iov_len  = sizeof("echo_child_service");
+                childiov[2].iov_base = "path";
+                childiov[2].iov_len  = sizeof("path");
+                childiov[3].iov_base = "/";
+                childiov[3].iov_len  = sizeof("/");
+                if( (jid = jail_set(childiov, 4, JAIL_CREATE | JAIL_ATTACH | JAIL_DYING )) == -1) {
+                    if((jid = jail_set(childiov, 2, JAIL_UPDATE | JAIL_ATTACH | JAIL_DYING)) == -1) {
                         perror("jail(child)(update)");
                         exit(0);
                     }
-                    else {
-                        perror("jail(child)(create)");
-                    }
+                    else perror("jail(child)(create)");
                 }
+                printf("JAIL ID = %d\n", jid);
                 if( setgid((gid_t)2) == -1 ) perror("setgid");
                 if( setuid((uid_t)2) == -1 ) perror("setuid");
                 if(execve(mkargv[0], mkargv, NULL) == -1) perror("execve");
