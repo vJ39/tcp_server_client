@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
+#include <jail.h>
 #include <sys/jail.h>
 #include <sys/uio.h>
 #include <stdlib.h>
@@ -137,7 +138,7 @@ int main() {
             else if(pid < 0) perror("fork");
             else {
                 int status;
-                if(waitpid(-1, &status, WUNTRACED) == -1) perror("waitpid");
+                waitpid(-1, &status, 0);
             }
             shutdown(client_sockfd, SHUT_WR);
             close(client_sockfd);
