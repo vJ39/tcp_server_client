@@ -156,7 +156,12 @@ int main() {
                             }
                             else perror("jail(child)(create)");
                         }
-                        printf("JAIL ID = %d\n", jid);
+                        if(!strncmp(mkargv[0], "jailid", strlen("jailid"))) {
+                            printf("JAIL ID = %d\n", jid);
+                            shutdown(client_sockfd, SHUT_WR);
+                            close(client_sockfd);
+                            continue;
+                        }
                         if( setgid((gid_t)2) == -1 ) perror("setgid");
                         if( setuid((uid_t)2) == -1 ) perror("setuid");
                         if(execve(mkargv[0], mkargv, NULL) == -1) perror("execve");
