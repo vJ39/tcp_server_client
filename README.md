@@ -8,7 +8,9 @@ FreeBSD 9.1-RELEASE-p7
 
 ##内容
 tcpで接続し、コマンドをサーバー側で実行します。(rshみたいな感じ?)  
-(IPアドレスとかchrootするディレクトリ名はソースに書いてあるので適宜変更してね)
+サーバーデーモン起動したらワーカーを起動します。  
+ワーカー(親）はJAIL化します。  
+クライアントからリクエストがきたらforkプロセス内で子JAIL化してコマンドを実行します。  
 
 ##ソースのコンパイルのしかた
 
@@ -61,14 +63,14 @@ usr
 
 #オプション
 
-jailid・・・子プロセスのJAIL IDを返します
+jailid・・・子JAILのJAIL IDを返します
 
 ```jailid
 % ./tcp_client jailid
 JAIL ID = 1364
 ```
 
-jailremove・・・子プロセスのJAIL IDを削除します
+jailremove・・・子JAILのJAIL IDを削除します
 
 ```jailremove
 vmware% ./tcp_client /usr/bin/perl -e 'sleep 999'
@@ -84,8 +86,9 @@ jailremove 1365
 #その他注意点
 
 サーバーを起動するとワーカーが50プロセスぐらいたちあがります。  
-最大プロセス数、仮想メモリーサイズ、CPU時間に制限をくわえてあります。  
-jailは、kern.securelevel = 2で走ります。  
-子JAIL最大数も制限をくわえてあります。  
+jail内の最大プロセス数、仮想メモリーサイズ、CPU時間に制限をくわえてあります。  
+jail内はkern.securelevel = 2で走ります。  
+子JAIL最大数も制限をくわえてあります。 
+IPアドレスとかchrootするディレクトリ名はソースに書いてあります。
 ほかに、いらんファイルもありますけど、気にしないでください。  
 気が向いたら勝手に更新します。
