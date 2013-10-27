@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
     int size = 0;
     FD_ZERO(&ready);
     FD_SET(sockfd, &ready);
-    to.tv_sec = 1;
+    to.tv_sec = 60;
     to.tv_usec = 0;
     for(i = 1; i < argc; i++){
         memcpy(buf + size, argv[i], strlen(argv[i]));
@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
         if(FD_ISSET(sockfd, &ready)) {
             i = read(sockfd, buf, sizeof(buf));
             write(1, buf, i);
-        }
+        } else { i = 0; }
     } while(i > 0);
     close(sockfd);
     return 0;

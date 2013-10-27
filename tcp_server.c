@@ -11,31 +11,39 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 #include <signal.h>
 #define ROOTDIR "/jail/echo"
 #define JAIL 1
 void setup_signal_handler(void);
-void cache_signal(int);
-void termination(int);
-int server_sockfd;
-
+void catch_signal(int);
 int main() {
-    int client_sockfd, server_len, client_len, i;
+    int server_sockfd, client_sockfd, server_len, client_len, i;
     size_t j;
     fd_set ready;
     struct sockaddr_in server_address, client_address;
     struct timeval to;
     char *mkargv[10];
-    int pid, status;
+    int pid;
     char buf[1024*1024];
     struct in_addr addr;
     inet_aton("192.168.1.106", &addr);
     if( chdir(ROOTDIR) == -1 ) perror("chdir");
 #ifdef JAIL
-    int jid;
+    /* RLIMIT */
+    struct rlimit rl;
+    int rc, jid;
+    rl.rlim_cur = 128;
+    rl.rlim_max = 256;
+    rc = setrlimit(RLIMIT_NPROC, &rl);
 
+    rl.rlim_cur = 10;
+    rl.rlim_max = 20;
+    rc = setrlimit(RLIMIT_CPU, &rl);
+
+    /* JAIL */
     int securelevel = 2;
-    int childrenmax = 5;
+    int childrenmax = 10;
 
     struct iovec iov[12];
     iov[0].iov_base = "path";
@@ -81,7 +89,7 @@ int main() {
     while(1) {
         FD_ZERO(&ready);
         FD_SET(server_sockfd, &ready);
-        to.tv_sec = 1;
+        to.tv_sec = 60;
         to.tv_usec = 0;
         if(select(server_sockfd + 1, &ready, (fd_set *)0, (fd_set *)0, &to) == -1) {
             perror("select");
@@ -111,8 +119,7 @@ int main() {
 
             bzero(buf, sizeof(buf));
 
-            if((pid = fork()) < 0) perror("fork");
-            else if(!pid) {
+            if((pid = fork()) == 0) {
                 iov[0].iov_base = "path";
                 iov[0].iov_len  = sizeof("path");
                 iov[1].iov_base = "/";
@@ -127,8 +134,10 @@ int main() {
                 if(execve(mkargv[0], mkargv, NULL) == -1) perror("execve");
                 for(i = 0;i < 10; i++) free(mkargv[i]);
             }
+            else if(pid < 0) perror("fork");
             else {
-                waitpid(pid, &status, WUNTRACED);
+                int status;
+                if(waitpid(-1, &status, WUNTRACED) == -1) perror("waitpid");
             }
             shutdown(client_sockfd, SHUT_WR);
             close(client_sockfd);
@@ -146,24 +155,13 @@ void setup_signal_handler(){
 
     // SIGCHLD
     memset(&act, 0, sizeof(act));
-    act.sa_handler = cache_signal;
+    act.sa_handler = catch_signal;
     sigemptyset(&act.sa_mask);
     act.sa_flags = SA_NOCLDSTOP | SA_RESTART;
     if(sigaction(SIGCHLD, &act, 0) == -1) perror("sigaction CHLD");
-
-    // SIGQUIT
-    memset(&act, 0, sizeof(act));
-    act.sa_handler = termination;
-    sigemptyset(&act.sa_mask);
-    if(sigaction(SIGQUIT, &act, 0) == -1) perror("sigaction SIGQUIT");
 }
 
-void cache_signal(int signum){
+void catch_signal(int signum){
     int status;
-    waitpid(-1, &status, WNOHANG);
-}
-
-void termination(int signum){
-    shutdown(server_sockfd, SHUT_RD);
-    close(server_sockfd);
+    if(waitpid(-1, &status, WNOHANG) < 0) perror("waitpid(catch_signal)");
 }
