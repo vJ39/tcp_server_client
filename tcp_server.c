@@ -15,6 +15,7 @@
 #define ROOTDIR "/jail/echo"
 #define JAIL 1
 #define ADDR "192.168.1.106"
+#define MAXWORKERS 50
 void setup_signal_handler(void);
 void catch_signal(int);
 int main() {
@@ -94,79 +95,89 @@ int main() {
 
     setup_signal_handler();
 
-    while(1) {
-        FD_ZERO(&ready);
-        FD_SET(server_sockfd, &ready);
-        to.tv_sec = 60;
-        to.tv_usec = 0;
-        if(select(server_sockfd + 1, &ready, (fd_set *)0, (fd_set *)0, &to) == -1) {
-            perror("select");
-            continue;
-        }
-        if(FD_ISSET(server_sockfd, &ready)) {
-            client_sockfd = accept(server_sockfd, (struct sockaddr *)&client_address, (socklen_t *)&client_len);
-            bzero(buf, sizeof(buf));
-            if((j = read(client_sockfd, buf, sizeof(buf))) == -1) perror("read");
-
-            char *ptr = buf;
-            for(i = 0; i < 10; i++){
-                if(ptr + i - buf > j) {mkargv[i] = NULL; continue;}
-                mkargv[i] = (char *)malloc(strlen(ptr)+1);
-                memcpy(mkargv[i], ptr, strlen(ptr));
-                ptr += strlen(ptr);
-                ptr ++;
-            }
-
-            // redirect
-            if(close(2) == -1) perror("close(2)");
-            if(close(1) == -1) perror("close(1)");
-            if(close(0) == -1) perror("close(0)");
-            if(dup2(client_sockfd, 2) == -1) perror("dup2(2)");
-            if(dup2(client_sockfd, 1) == -1) perror("dup2(1)");
-            if(dup2(client_sockfd, 0) == -1) perror("dup2(0)");
-
-            bzero(buf, sizeof(buf));
-
-            if(!strncmp(mkargv[0], "jailremove", strlen("jailremove"))) {
-                jid = atoi(mkargv[1]);
-                printf("jailremove %d\n", jid);
-                if(jail_remove(jid) == -1) perror("jail_remove");
-                shutdown(client_sockfd, SHUT_WR);
-                close(client_sockfd);
-                continue;
-            }
-            if((pid = fork()) == 0) {
-                struct iovec childiov[4];
-                childiov[0].iov_base = "name";
-                childiov[0].iov_len  = sizeof("name");
-                childiov[1].iov_base = "echo_child_service";
-                childiov[1].iov_len  = sizeof("echo_child_service");
-                childiov[2].iov_base = "path";
-                childiov[2].iov_len  = sizeof("path");
-                childiov[3].iov_base = "/";
-                childiov[3].iov_len  = sizeof("/");
-                if( (jid = jail_set(childiov, 4, JAIL_CREATE | JAIL_ATTACH | JAIL_DYING )) == -1) {
-                    if((jid = jail_set(childiov, 2, JAIL_UPDATE | JAIL_ATTACH | JAIL_DYING)) == -1) {
-                        perror("jail(child)(update)");
-                        exit(0);
-                    }
-                    else perror("jail(child)(create)");
+    int masterpid;
+    for(i = 0; i < 10; i++) {
+        if((masterpid = fork()) == 0) {
+            while(1) {
+                FD_ZERO(&ready);
+                FD_SET(server_sockfd, &ready);
+                to.tv_sec = 60;
+                to.tv_usec = 0;
+                if(select(server_sockfd + 1, &ready, (fd_set *)0, (fd_set *)0, &to) == -1) {
+                    perror("select");
+                    continue;
                 }
-                printf("JAIL ID = %d\n", jid);
-                if( setgid((gid_t)2) == -1 ) perror("setgid");
-                if( setuid((uid_t)2) == -1 ) perror("setuid");
-                if(execve(mkargv[0], mkargv, NULL) == -1) perror("execve");
-                for(i = 0;i < 10; i++) free(mkargv[i]);
+                if(FD_ISSET(server_sockfd, &ready)) {
+                    client_sockfd = accept(server_sockfd, (struct sockaddr *)&client_address, (socklen_t *)&client_len);
+                    bzero(buf, sizeof(buf));
+                    if((j = read(client_sockfd, buf, sizeof(buf))) == -1) perror("read");
+
+                    char *ptr = buf;
+                    for(i = 0; i < 10; i++){
+                        if(ptr + i - buf > j) {mkargv[i] = NULL; continue;}
+                        mkargv[i] = (char *)malloc(strlen(ptr)+1);
+                        memcpy(mkargv[i], ptr, strlen(ptr));
+                        ptr += strlen(ptr);
+                        ptr ++;
+                    }
+
+                    // redirect
+                    if(close(2) == -1) perror("close(2)");
+                    if(close(1) == -1) perror("close(1)");
+                    if(close(0) == -1) perror("close(0)");
+                    if(dup2(client_sockfd, 2) == -1) perror("dup2(2)");
+                    if(dup2(client_sockfd, 1) == -1) perror("dup2(1)");
+                    if(dup2(client_sockfd, 0) == -1) perror("dup2(0)");
+
+                    bzero(buf, sizeof(buf));
+
+                    if(!strncmp(mkargv[0], "jailremove", strlen("jailremove"))) {
+                        jid = atoi(mkargv[1]);
+                        printf("jailremove %d\n", jid);
+                        if(jail_remove(jid) == -1) perror("jail_remove");
+                        shutdown(client_sockfd, SHUT_WR);
+                        close(client_sockfd);
+                        continue;
+                    }
+                    if((pid = fork()) == 0) {
+                        struct iovec childiov[4];
+                        childiov[0].iov_base = "name";
+                        childiov[0].iov_len  = sizeof("name");
+                        childiov[1].iov_base = "echo_child_service";
+                        childiov[1].iov_len  = sizeof("echo_child_service");
+                        childiov[2].iov_base = "path";
+                        childiov[2].iov_len  = sizeof("path");
+                        childiov[3].iov_base = "/";
+                        childiov[3].iov_len  = sizeof("/");
+                        if( (jid = jail_set(childiov, 4, JAIL_CREATE | JAIL_ATTACH | JAIL_DYING )) == -1) {
+                            if((jid = jail_set(childiov, 2, JAIL_UPDATE | JAIL_ATTACH | JAIL_DYING)) == -1) {
+                                perror("jail(child)(update)");
+                                exit(0);
+                            }
+                            else perror("jail(child)(create)");
+                        }
+                        printf("JAIL ID = %d\n", jid);
+                        if( setgid((gid_t)2) == -1 ) perror("setgid");
+                        if( setuid((uid_t)2) == -1 ) perror("setuid");
+                        if(execve(mkargv[0], mkargv, NULL) == -1) perror("execve");
+                        for(i = 0;i < 10; i++) free(mkargv[i]);
+                    }
+                    else if(pid < 0) perror("fork");
+                    else {
+                        int status;
+                        waitpid(-1, &status, 0);
+                    }
+                    shutdown(client_sockfd, SHUT_WR);
+                    close(client_sockfd);
+                }
             }
-            else if(pid < 0) perror("fork");
-            else {
-                int status;
-                waitpid(-1, &status, 0);
-            }
-            shutdown(client_sockfd, SHUT_WR);
-            close(client_sockfd);
+        }
+        else if(masterpid < 0) {
+            perror("fork");
+            exit(0);
         }
     }
+    return 0;
 }
 
 void setup_signal_handler(){
