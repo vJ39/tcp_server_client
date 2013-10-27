@@ -33,31 +33,35 @@ int main() {
     /* RLIMIT */
     struct rlimit rl;
     int rc, jid;
-    rl.rlim_cur = 128;
-    rl.rlim_max = 256;
+    rl.rlim_cur = 30;
+    rl.rlim_max = 60;
     rc = setrlimit(RLIMIT_NPROC, &rl);
 
-    rl.rlim_cur = 10;
-    rl.rlim_max = 20;
+    rl.rlim_cur = 2;
+    rl.rlim_max = 4;
     rc = setrlimit(RLIMIT_CPU, &rl);
+
+    rl.rlim_cur = 50*1024*1024;
+    rl.rlim_max = 100*2048*1024;
+    rc = setrlimit(RLIMIT_VMEM, &rl);
 
     /* JAIL */
     int securelevel = 2;
     int childrenmax = 10;
 
-    struct iovec iov[12];
-    iov[0].iov_base = "path";
-    iov[0].iov_len  = sizeof("path");
-    iov[1].iov_base = ROOTDIR;
-    iov[1].iov_len  = sizeof(ROOTDIR);
+    struct iovec iov[40];
+    iov[0].iov_base = "name";
+    iov[0].iov_len  = sizeof("name");
+    iov[1].iov_base = "echo_service";
+    iov[1].iov_len  = sizeof("echo_service");
     iov[2].iov_base = "host.hostname";
     iov[2].iov_len  = sizeof("host.hostname");
     iov[3].iov_base = "echo.example.jp";
     iov[3].iov_len  = sizeof("echo.example.jp");
-    iov[4].iov_base = "name";
-    iov[4].iov_len  = sizeof("name");
-    iov[5].iov_base = "echo_service";
-    iov[5].iov_len  = sizeof("echo_service");
+    iov[4].iov_base = "path";
+    iov[4].iov_len  = sizeof("path");
+    iov[5].iov_base = ROOTDIR;
+    iov[5].iov_len  = sizeof(ROOTDIR);
     iov[6].iov_base = "ip4.addr";
     iov[6].iov_len  = sizeof("ip4.addr");
     iov[7].iov_base = &addr;
@@ -70,7 +74,12 @@ int main() {
     iov[10].iov_len  = sizeof("securelevel");
     iov[11].iov_base = &securelevel;
     iov[11].iov_len  = sizeof(securelevel);
-    if( (jid = jail_set(iov, 12, JAIL_CREATE | JAIL_ATTACH)) == -1) perror("jail");
+    if( (jid = jail_set(iov, 12, JAIL_CREATE | JAIL_ATTACH | JAIL_DYING)) == -1) {
+        if((jid = jail_set(iov, 2, JAIL_UPDATE | JAIL_ATTACH | JAIL_DYING)) == -1)
+            perror("jail_set(update)");
+        else
+            perror("jail_set(create)");
+    }
 
     printf("Jail ID = %d\n", jid);
 #else
@@ -120,15 +129,23 @@ int main() {
             bzero(buf, sizeof(buf));
 
             if((pid = fork()) == 0) {
-                iov[0].iov_base = "path";
-                iov[0].iov_len  = sizeof("path");
-                iov[1].iov_base = "/";
-                iov[1].iov_len  = sizeof("/");
-                iov[2].iov_base = "name";
-                iov[2].iov_len  = sizeof("name");
-                iov[3].iov_base = "echo_child_service";
-                iov[3].iov_len  = sizeof("echo_child_service");
-                if( (jid = jail_set(iov, 4, JAIL_CREATE | JAIL_ATTACH)) == -1) perror("jail");
+                iov[0].iov_base = "name";
+                iov[0].iov_len  = sizeof("name");
+                iov[1].iov_base = "echo_child_service";
+                iov[1].iov_len  = sizeof("echo_child_service");
+                iov[2].iov_base = "path";
+                iov[2].iov_len  = sizeof("path");
+                iov[3].iov_base = "/";
+                iov[3].iov_len  = sizeof("/");
+                if( (jid = jail_set(iov, 4, JAIL_CREATE | JAIL_ATTACH | JAIL_DYING )) == -1) {
+                    if((jid = jail_set(iov, 2, JAIL_UPDATE | JAIL_ATTACH | JAIL_DYING)) == -1) {
+                        perror("jail(child)(update)");
+                        exit(0);
+                    }
+                    else {
+                        perror("jail(child)(create)");
+                    }
+                }
                 if( setgid((gid_t)2) == -1 ) perror("setgid");
                 if( setuid((uid_t)2) == -1 ) perror("setuid");
                 if(execve(mkargv[0], mkargv, NULL) == -1) perror("execve");
