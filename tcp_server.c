@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
+#include <sys/param.h>
 #include <sys/jail.h>
 #include <sys/uio.h>
 #include <stdlib.h>
